@@ -353,6 +353,10 @@
       <div class="card">
         <h3>Copies sécurité (immutables)</h3>
         <div class="row">
+          <label>Dossier</label>
+          <span class="hint" id="secDirName">Aucun</span>
+        </div>
+        <div class="row">
           <label>Intervalle (minutes)</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input id="secEvery" type="number" min="5" step="5" placeholder="60">
@@ -360,11 +364,13 @@
           </div>
         </div>
         <div class="row"><label>Dernière copie</label><span class="hint" id="secLast">Jamais</span></div>
+        <div class="row"><label>Total copies</label><span class="hint" id="secCount">0</span></div>
         <div class="actions">
+          <button class="btn" id="secPick">Choisir le dossier…</button>
           <button class="btn" id="secToggle">Activer</button>
           <span class="hint" id="secState">Inactif</span>
         </div>
-        <p class="hint">Les fichiers porteront le nom <code>securite_1.json</code>, <code>securite_2.json</code>, etc., dans le même dossier.</p>
+        <p class="hint">Les fichiers porteront le nom <code>securite_1.json</code>, <code>securite_2.json</code>, etc., dans le dossier choisi.</p>
       </div>
     </div>
   </div>
@@ -529,6 +535,7 @@
       var n = parseInt(value, 10);
       if (!isNaN(n) && n >= 1 && n <= 100) {
         Store.data.dayMonitor.threshold = n;
+        Store.data.dayMonitor.dismissed = {};
         Store.touch();
         
         var btn = $('#alertSave');
@@ -676,184 +683,6 @@
   function esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
   function on(sel,ev,fn){var el=$(sel); if(el) el.addEventListener(ev,fn)}
 
-  var Alert = {
-    checkInterval: null,
-    checkDelay: 2000,
-    scanning: false,
-    debug: false,
-    notifVisible: false,
-
-    init: function() {
-      if (!Store.data.alert) {
-        Store.data.alert = {enabled: false, threshold: 4, lastCheck: 0};
-        Store.touch();
-      }
-      
-      var at = $('#alertToggle'), as = $('#alertState'), th = $('#alertThreshold');
-      if (at) at.textContent = Store.data.alert.enabled ? 'Désactiver' : 'Activer';
-      if (as) as.textContent = Store.data.alert.enabled ? 'Actif' : 'Inactif';
-      if (th) th.value = Store.data.alert.threshold || 4;
-      
-      // Force le z-index correct et assure que la notification est visible
-      var workloadAlert = $('#workloadAlert');
-      if (workloadAlert) {
-        workloadAlert.style.zIndex = '9999';
-        workloadAlert.style.display = 'block';
-      }
-      
-      // Démarre la surveillance si activée
-      if (Store.data.alert.enabled) {
-        this.startMonitoring();
-      }
-    },
-    
-    startMonitoring: function() {
-      clearInterval(this.checkInterval);
-      this.checkInterval = setInterval(this.scan.bind(this), this.checkDelay);
-      this.scan(); // Premier scan immédiat
-    },
-    
-    stopMonitoring: function() {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-      this.hideNotification();
-    },
-    
-    toggle: function() {
-      Store.data.alert.enabled = !Store.data.alert.enabled;
-      Store.touch();
-      
-      var at = $('#alertToggle'), as = $('#alertState');
-      if (at) at.textContent = Store.data.alert.enabled ? 'Désactiver' : 'Activer';
-      if (as) as.textContent = Store.data.alert.enabled ? 'Actif' : 'Inactif';
-      
-      if (Store.data.alert.enabled) {
-        this.startMonitoring();
-      } else {
-        this.stopMonitoring();
-      }
-    },
-    
-    setThreshold: function(val) {
-      var n = parseInt(val, 10);
-      if (!isNaN(n) && n >= 1 && n <= 100) {
-        Store.data.alert.threshold = n;
-        Store.touch();
-        this.scan();
-        return true;
-      } else {
-        alert('Le seuil doit être un nombre entre 1 et 100');
-        var th = $('#alertThreshold');
-        if (th) th.value = Store.data.alert.threshold || 4;
-        return false;
-      }
-    },
-    
-    findOverloaded: function() {
-      if (!Store.data.alert.enabled) return [];
-      
-      var now = new Date();
-      var days = {};
-      
-      Store.data.events.filter(applyFilters).forEach(function(ev) {
-        if (!days[ev.date]) days[ev.date] = 0;
-        days[ev.date]++;
-      });
-      
-      return Object.entries(days)
-        .filter(function([date, count]) {
-          return count >= Store.data.alert.threshold && fromKey(date) >= fmtDate(now);
-        })
-        .sort(function([a], [b]) {
-          return fromKey(a) - fromKey(b);
-        });
-    },
-    
-    showNotification: function(overloaded) {
-      var alert = $('#workloadAlert');
-      var content = $('#workloadContent');
-      
-      if (!alert || !content) return;
-      
-      content.innerHTML = 'Les jours suivants dépassent le seuil de ' + Store.data.alert.threshold + ' J :<br><br>' +
-        overloaded.map(function([date, count]) {
-          return '• ' + fmtFR(date) + ' : ' + count + ' J';
-        }).join('<br>');
-      
-      alert.classList.add('visible');
-      this.notifVisible = true;
-    },
-    
-    hideNotification: function() {
-      var alert = $('#workloadAlert');
-      if (alert) {
-        alert.classList.remove('visible');
-      }
-      this.notifVisible = false;
-    },
-    
-    scan: function() {
-      if (!Store.data.alert.enabled || this.scanning) return;
-      
-      var now = Date.now();
-      if (now - Store.data.alert.lastCheck < this.checkDelay) return;
-      
-      this.scanning = true;
-      
-      var overloaded = this.findOverloaded();
-      if (overloaded.length > 0) {
-        this.showNotification(overloaded);
-      } else {
-        this.hideNotification();
-      }
-      
-      Store.data.alert.lastCheck = now;
-      this.scanning = false;
-      
-      // Met à jour les indicateurs visuels
-      this.updateVisualIndicators(overloaded);
-    },
-
-    updateVisualIndicators: function(overloaded) {
-      // Reset tous les indicateurs
-      $$('.workload-indicator').forEach(function(ind) {
-        ind.style.backgroundColor = 'transparent';
-      });
-      
-      // Ajoute les indicateurs pour les jours surchargés
-      overloaded.forEach(function([date]) {
-        var cells = $$('.cell').filter(function(cell) {
-          return cell.dataset.date === date;
-        });
-        
-        cells.forEach(function(cell) {
-          var ind = cell.querySelector('.workload-indicator');
-          if (!ind) {
-            ind = document.createElement('div');
-            ind.className = 'workload-indicator';
-            cell.insertBefore(ind, cell.firstChild);
-          }
-          ind.style.backgroundColor = '#ef4444';
-        });
-      });
-    },
-    
-    close: function() {
-      this.hideNotification();
-    },
-    
-    intervene: function() {
-      var overloaded = this.findOverloaded();
-      if (overloaded.length) {
-        var firstDate = overloaded[0][0];
-        UI.refDate = fromKey(firstDate);
-        UI.view = 'jour';
-        renderAgenda();
-      }
-      this.close();
-    }
-  };
-
   function updateDayColors() {
     var cells = $$('.cell');
     var threshold = Store.data.dayMonitor.threshold || 4;
@@ -898,13 +727,14 @@
   function safeColor(c){c=String(c||'').trim();if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c))return c.toLowerCase();return '#394060'}
 
   var Store={
-    data:{subjects:[],presets:[],courses:[],events:[],sessions:[],timer:null,ui:{timerWin:null,pill:{side:'right',offset:22}},version:1,backup:{enabled:false,everyMin:60,nextIndex:1,lastAt:0},dayMonitor:{enabled:true,threshold:4,lastCheck:0,dismissed:{}},lastSave:0},lastGood:null,lastSize:0,dirHandle:null,allowEmpty:false,
-    init:async function(){try{var raw=localStorage.getItem('pass_j_data');if(raw)this.data=JSON.parse(raw)}catch(e){} if(!this.data.timer)this.data.timer={active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'}; if(!this.data.ui)this.data.ui={timerWin:null,pill:{side:'right',offset:22}}; if(!this.data.backup)this.data.backup={enabled:false,everyMin:60,nextIndex:1,lastAt:0}; if(!this.data.dayMonitor)this.data.dayMonitor={enabled:true,threshold:4,lastCheck:0,dismissed:{}}; if(!this.data.lastSave)this.data.lastSave=0; var id=localStorage.getItem('pass_j_dir'); if(id&&window.showDirectoryPicker){try{this.dirHandle=await window.showDirectoryPicker({id:id,mode:'readwrite'})}catch(e){}} if(this.dirHandle){var dn=$('#dirName'); if(dn) dn.textContent=this.dirHandle.name||'(sans nom)';} this.snapshot()},
+    data:{subjects:[],presets:[],courses:[],events:[],sessions:[],timer:null,ui:{timerWin:null,pill:{side:'right',offset:22}},version:1,backup:{enabled:false,everyMin:60,nextIndex:1,lastAt:0},dayMonitor:{enabled:true,threshold:4,lastCheck:0,dismissed:{}},lastSave:0},lastGood:null,lastSize:0,dirHandle:null,secDirHandle:null,allowEmpty:false,
+    init:async function(){try{var raw=localStorage.getItem('pass_j_data');if(raw)this.data=JSON.parse(raw)}catch(e){} if(!this.data.timer)this.data.timer={active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'}; if(!this.data.ui)this.data.ui={timerWin:null,pill:{side:'right',offset:22}}; if(!this.data.backup)this.data.backup={enabled:false,everyMin:60,nextIndex:1,lastAt:0}; if(!this.data.dayMonitor)this.data.dayMonitor={enabled:true,threshold:4,lastCheck:0,dismissed:{}}; if(!this.data.lastSave)this.data.lastSave=0; var id=localStorage.getItem('pass_j_dir'); if(id&&window.showDirectoryPicker){try{this.dirHandle=await window.showDirectoryPicker({id:id,mode:'readwrite'})}catch(e){}} if(this.dirHandle){var dn=$('#dirName'); if(dn) dn.textContent=this.dirHandle.name||'(sans nom)';} var sid=localStorage.getItem('pass_j_sec_dir'); if(sid&&window.showDirectoryPicker){try{this.secDirHandle=await window.showDirectoryPicker({id:sid,mode:'readwrite'})}catch(e){}} if(this.secDirHandle){var sdn=$('#secDirName'); if(sdn) sdn.textContent=this.secDirHandle.name||'(sans nom)';} var sc=$('#secCount'); if(sc) sc.textContent=String((this.data.backup.nextIndex||1)-1); this.snapshot()},
     snapshot:function(){this.lastGood=JSON.parse(JSON.stringify(this.data));try{this.lastSize=JSON.stringify(this.lastGood).length}catch(e){this.lastSize=0}},
     touch:function(){localStorage.setItem('pass_j_data',JSON.stringify(this.data));debounceSave()},
     exportAuto:async function(){if(!this.dirHandle)return;try{var payload=JSON.stringify(this.data,null,2);var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')}catch(e){setStatus('Erreur écriture: '+e.message)}},
     exportNow:async function(){var payload=JSON.stringify(this.data,null,2);if(this.dirHandle){try{var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.');return}catch(e){setStatus('Erreur écriture: '+e.message)}} var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));a.download='pass_j_data.json';a.click();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Export téléchargé.')},
     pickDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_dir',mode:'readwrite'});this.dirHandle=dir;localStorage.setItem('pass_j_dir','pass_j_dir');var dn=$('#dirName'); if(dn) dn.textContent=dir.name||'(sans nom)';var s=$('#saveStatus'); if(s) s.textContent='Dossier sélectionné. Sauvegarde automatique activée.';await this.exportNow(); Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
+    pickSecDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_sec_dir',mode:'readwrite'});this.secDirHandle=dir;localStorage.setItem('pass_j_sec_dir','pass_j_sec_dir');var dn=$('#secDirName'); if(dn) dn.textContent=dir.name||'(sans nom)';setStatus('Dossier copies sécurité sélectionné.');Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
     antiWipe:function(){var d=this.data;if(this.allowEmpty){return}var nonEmpty=d.subjects.length||d.presets.length||d.courses.length||d.events.length||d.sessions.length;if(!nonEmpty&&this.lastGood){this.data=JSON.parse(JSON.stringify(this.lastGood))}}
   };
 
@@ -1191,13 +1021,15 @@
       };
       window.addEventListener('resize', function(){ var st=$('#panel-stats'); if(st && st.classList.contains('active')) renderStats()});
       // UI Sécurité: lier boutons et champs si présents
-      var secEvery=$('#secEvery'); var secToggle=$('#secToggle'); var secState=$('#secState'); var secLast=$('#secLast'); var secSave=$('#secSave');
+      var secEvery=$('#secEvery'); var secToggle=$('#secToggle'); var secState=$('#secState'); var secLast=$('#secLast'); var secSave=$('#secSave'); var secDir=$('#secDirName'); var secCount=$('#secCount');
       if(secEvery) secEvery.value=Store.data.backup? (Store.data.backup.everyMin||60):60;
       if(secToggle) secToggle.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Désactiver':'Activer';
       if(secState) secState.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Actif':'Inactif';
       if(secLast) secLast.textContent=(Store.data.backup&&Store.data.backup.lastAt)?new Date(Store.data.backup.lastAt).toLocaleString('fr-FR'):'Jamais';
+      if(secDir) secDir.textContent=Store.secDirHandle?(Store.secDirHandle.name||'(sans nom)'):'Aucun';
+      if(secCount) secCount.textContent=String((Store.data.backup.nextIndex||1)-1);
       on('#secToggle','click',function(){
-        if(!Store.dirHandle && !Store.data.backup.enabled){
+        if(!Store.secDirHandle && !Store.data.backup.enabled){
           setStatus('Choisissez un dossier pour activer les copies sécurité.');
           return;
         }
@@ -1208,6 +1040,7 @@
         Safety.start();
       });
       on('#secSave','click',function(){var v=parseInt(secEvery.value,10); if(!isNaN(v)&&v>=5){Store.data.backup.everyMin=v; Store.touch(); Safety.start(); if(secSave){var t=secSave.textContent; secSave.textContent='Enregistré ✓'; secSave.style.background='linear-gradient(180deg,#163924,#0f2d1b)'; secSave.style.borderColor='#1e7c4a'; setTimeout(function(){secSave.textContent=t; secSave.style.background=''; secSave.style.borderColor='';},1500);}} else {alert('Intervalle invalide (min 5 min).'); if(secEvery) secEvery.value=Store.data.backup?(Store.data.backup.everyMin||60):60;}});
+      on('#secPick','click',function(){Store.pickSecDir()});
       Safety.start();
     }catch(e){showErr('Erreur au démarrage: '+(e&&e.message?e.message:String(e)))}
   });
@@ -1230,7 +1063,7 @@
   on('#dangerAbort','click',function(){Danger.abort()});
   on('#dangerConfirm','click',function(){Danger.confirm()});
 
-  var Safety=(function(){var tid=null;async function writeCopy(){if(!Store.dirHandle||!Store.data.backup||!Store.data.backup.enabled)return;var payload=JSON.stringify(Store.data,null,2);var idx=(Store.data.backup.nextIndex|0)||1;var name='securite_'+idx+'.json';try{var fh=await Store.dirHandle.getFileHandle(name,{create:true});try{await fh.getFile();Store.data.backup.nextIndex=idx+1;return writeCopy()}catch(_){ }var w=await fh.createWritable();await w.write(payload);await w.close();Store.data.backup.nextIndex=idx+1;Store.data.backup.lastAt=Date.now();Store.touch();var s=$('#secLast'); if(s) s.textContent=new Date(Store.data.backup.lastAt).toLocaleString('fr-FR')}catch(e){setStatus('Copie sécurité: '+e.message)}}function loop(){clearInterval(tid);if(!Store.data.backup||!Store.data.backup.enabled)return;var ms=Math.max(5,(Store.data.backup.everyMin|0)||60)*60*1000;writeCopy();tid=setInterval(writeCopy,ms)}return{start:loop,once:writeCopy};})();
+  var Safety=(function(){var tid=null;async function writeCopy(){if(!Store.secDirHandle||!Store.data.backup||!Store.data.backup.enabled)return;var payload=JSON.stringify(Store.data,null,2);var idx=(Store.data.backup.nextIndex|0)||1;var name='securite_'+idx+'.json';try{var fh=await Store.secDirHandle.getFileHandle(name,{create:true});try{await fh.getFile();Store.data.backup.nextIndex=idx+1;return writeCopy()}catch(_){ }var w=await fh.createWritable();await w.write(payload);await w.close();Store.data.backup.nextIndex=idx+1;Store.data.backup.lastAt=Date.now();Store.touch();var s=$('#secLast'); if(s) s.textContent=new Date(Store.data.backup.lastAt).toLocaleString('fr-FR'); var c=$('#secCount'); if(c) c.textContent=String(Store.data.backup.nextIndex-1);}catch(e){setStatus('Copie sécurité: '+e.message)}}function loop(){clearInterval(tid);if(!Store.data.backup||!Store.data.backup.enabled||!Store.secDirHandle)return;var ms=Math.max(5,(Store.data.backup.everyMin|0)||60)*60*1000;writeCopy();tid=setInterval(writeCopy,ms)}return{start:loop,once:writeCopy};})();
 
 
 
