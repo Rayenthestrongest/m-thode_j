@@ -179,6 +179,19 @@
     .day-indicator.critical {
       background: #ef4444;
     }
+    .alert-notif {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      transform: translateY(150%);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+    }
     .alert-notif.show{transform:none}
     .alert-notif .header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
     .alert-notif .dot{width:8px;height:8px;border-radius:8px;background:#f5d565}
@@ -441,6 +454,17 @@
     <button class="btn" id="dismissOverload">Ignorer</button>
   </div>
 </div>
+<div id="overloadNotif" class="alert-notif">
+  <div class="header">
+    <div class="dot"></div>
+    <div class="title">Surcharge détectée</div>
+  </div>
+  <div class="content" id="overloadNotifContent"></div>
+  <div class="actions">
+    <button class="btn warning" id="notifGo">Voir le jour</button>
+    <button class="btn" id="notifDismiss">Ignorer</button>
+  </div>
+</div>
 <div id="timer" class="timer">
   <div class="timer-header" id="timerDrag">
     <div class="dot-sm" id="timerDot" style="background:#22c55e"></div>
@@ -508,8 +532,8 @@
 
     startMonitoring: function() {
       clearInterval(this.interval);
-      // Vérifie la charge plus fréquemment (toutes les 10 s)
-      this.interval = setInterval(this.check.bind(this), 10000);
+      // Vérifie la charge fréquemment (toutes les 5 s)
+      this.interval = setInterval(this.check.bind(this), 5000);
       this.check();
     },
 
@@ -587,22 +611,32 @@
     showAlert: function(overloadedDays) {
       var alert = $('#overloadAlert');
       var content = $('#overloadContent');
+      var notif = $('#overloadNotif');
+      var notifContent = $('#overloadNotifContent');
 
-      if (!alert || !content) return;
+      if (!content || !notifContent) return;
 
-      content.innerHTML = 'Les jours suivants atteignent ou dépassent J' +
+      var msg = 'Les jours suivants atteignent ou dépassent J' +
         Store.data.dayMonitor.threshold + ' :<br><br>' +
         overloadedDays.map(function([date, maxJ]) {
           return '• ' + fmtFR(date) + ' : J' + maxJ;
         }).join('<br>');
 
-      alert.classList.add('visible');
+      content.innerHTML = msg;
+      notifContent.innerHTML = msg;
+
+      if (alert) alert.classList.add('visible');
+      if (notif) notif.classList.add('show');
     },
 
     hideAlert: function() {
       var alert = $('#overloadAlert');
+      var notif = $('#overloadNotif');
       if (alert) {
         alert.classList.remove('visible');
+      }
+      if (notif) {
+        notif.classList.remove('show');
       }
     },
 
@@ -730,7 +764,16 @@
     data:{subjects:[],presets:[],courses:[],events:[],sessions:[],timer:null,ui:{timerWin:null,pill:{side:'right',offset:22}},version:1,backup:{enabled:false,everyMin:60,nextIndex:1,lastAt:0},dayMonitor:{enabled:true,threshold:4,lastCheck:0,dismissed:{}},lastSave:0},lastGood:null,lastSize:0,dirHandle:null,secDirHandle:null,allowEmpty:false,
     init:async function(){try{var raw=localStorage.getItem('pass_j_data');if(raw)this.data=JSON.parse(raw)}catch(e){} if(!this.data.timer)this.data.timer={active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'}; if(!this.data.ui)this.data.ui={timerWin:null,pill:{side:'right',offset:22}}; if(!this.data.backup)this.data.backup={enabled:false,everyMin:60,nextIndex:1,lastAt:0}; if(!this.data.dayMonitor)this.data.dayMonitor={enabled:true,threshold:4,lastCheck:0,dismissed:{}}; if(!this.data.lastSave)this.data.lastSave=0; var id=localStorage.getItem('pass_j_dir'); if(id&&window.showDirectoryPicker){try{this.dirHandle=await window.showDirectoryPicker({id:id,mode:'readwrite'})}catch(e){}} if(this.dirHandle){var dn=$('#dirName'); if(dn) dn.textContent=this.dirHandle.name||'(sans nom)';} var sid=localStorage.getItem('pass_j_sec_dir'); if(sid&&window.showDirectoryPicker){try{this.secDirHandle=await window.showDirectoryPicker({id:sid,mode:'readwrite'})}catch(e){}} if(this.secDirHandle){var sdn=$('#secDirName'); if(sdn) sdn.textContent=this.secDirHandle.name||'(sans nom)';} var sc=$('#secCount'); if(sc) sc.textContent=String((this.data.backup.nextIndex||1)-1); this.snapshot()},
     snapshot:function(){this.lastGood=JSON.parse(JSON.stringify(this.data));try{this.lastSize=JSON.stringify(this.lastGood).length}catch(e){this.lastSize=0}},
-    touch:function(){localStorage.setItem('pass_j_data',JSON.stringify(this.data));debounceSave()},
+    touch:function(){
+      localStorage.setItem('pass_j_data',JSON.stringify(this.data));
+      debounceSave();
+      if (DayMonitor && typeof DayMonitor.check === 'function') {
+        DayMonitor.check();
+      }
+      if (typeof updateDayColors === 'function') {
+        updateDayColors();
+      }
+    },
     exportAuto:async function(){if(!this.dirHandle)return;try{var payload=JSON.stringify(this.data,null,2);var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')}catch(e){setStatus('Erreur écriture: '+e.message)}},
     exportNow:async function(){var payload=JSON.stringify(this.data,null,2);if(this.dirHandle){try{var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.');return}catch(e){setStatus('Erreur écriture: '+e.message)}} var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));a.download='pass_j_data.json';a.click();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Export téléchargé.')},
     pickDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_dir',mode:'readwrite'});this.dirHandle=dir;localStorage.setItem('pass_j_dir','pass_j_dir');var dn=$('#dirName'); if(dn) dn.textContent=dir.name||'(sans nom)';var s=$('#saveStatus'); if(s) s.textContent='Dossier sélectionné. Sauvegarde automatique activée.';await this.exportNow(); Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
@@ -989,7 +1032,15 @@
         DayMonitor.dismissAlert();
       });
 
+      on('#notifDismiss', 'click', function() {
+        DayMonitor.dismissAlert();
+      });
+
       on('#checkOverload', 'click', function() {
+        DayMonitor.goToOverloadedDay();
+      });
+
+      on('#notifGo', 'click', function() {
         DayMonitor.goToOverloadedDay();
       });
 
