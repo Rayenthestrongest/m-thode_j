@@ -352,7 +352,13 @@
       </div>
       <div class="card">
         <h3>Copies sécurité (immutables)</h3>
-        <div class="row"><label>Intervalle (minutes)</label><input id="secEvery" type="number" min="5" step="5" placeholder="60"></div>
+        <div class="row">
+          <label>Intervalle (minutes)</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="secEvery" type="number" min="5" step="5" placeholder="60">
+            <button class="btn success" id="secSave">Enregistrer</button>
+          </div>
+        </div>
         <div class="row"><label>Dernière copie</label><span class="hint" id="secLast">Jamais</span></div>
         <div class="actions">
           <button class="btn" id="secToggle">Activer</button>
@@ -550,20 +556,21 @@
 
     findOverloadedDays: function() {
       if (!Store.data.dayMonitor.enabled) return [];
-      
+
       var today = fmtDate(new Date());
       var days = {};
-      
+
       Store.data.events.forEach(function(ev) {
-        if (fromKey(ev.date) >= today) {
-          if (!days[ev.date]) days[ev.date] = 0;
-          days[ev.date]++;
+        var d = fromKey(ev.date);
+        if (d >= today) {
+          var j = ev.j || 0;
+          if (!days[ev.date] || j > days[ev.date]) days[ev.date] = j;
         }
       });
-      
+
       return Object.entries(days)
-        .filter(function([date, count]) {
-          return count >= Store.data.dayMonitor.threshold;
+        .filter(function([date, maxJ]) {
+          return maxJ >= Store.data.dayMonitor.threshold;
         })
         .sort(function([a], [b]) {
           return fromKey(a) - fromKey(b);
@@ -573,15 +580,15 @@
     showAlert: function(overloadedDays) {
       var alert = $('#overloadAlert');
       var content = $('#overloadContent');
-      
+
       if (!alert || !content) return;
-      
-      content.innerHTML = 'Les jours suivants dépassent le seuil de ' + 
-        Store.data.dayMonitor.threshold + ' révisions :<br><br>' +
-        overloadedDays.map(function([date, count]) {
-          return '• ' + fmtFR(date) + ' : ' + count + ' révisions';
+
+      content.innerHTML = 'Les jours suivants atteignent ou dépassent J' +
+        Store.data.dayMonitor.threshold + ' :<br><br>' +
+        overloadedDays.map(function([date, maxJ]) {
+          return '• ' + fmtFR(date) + ' : J' + maxJ;
         }).join('<br>');
-      
+
       alert.classList.add('visible');
     },
 
@@ -624,15 +631,15 @@
         ind.remove();
       });
       
-      overloaded.forEach(function([date, count]) {
+      overloaded.forEach(function([date, maxJ]) {
         var cells = $$('.cell').filter(function(cell) {
           return cell.dataset.date === date;
         });
-        
+
         cells.forEach(function(cell) {
           var ind = document.createElement('div');
-          ind.className = 'day-indicator ' + 
-            (count >= Store.data.dayMonitor.threshold * 1.5 ? 'critical' : 'warning');
+          ind.className = 'day-indicator ' +
+            (maxJ >= Store.data.dayMonitor.threshold * 1.5 ? 'critical' : 'warning');
           cell.insertBefore(ind, cell.firstChild);
         });
       });
@@ -849,19 +856,20 @@
 
   function updateDayColors() {
     var cells = $$('.cell');
-    var maxJ = Store.data.dayMonitor.threshold || 4;
+    var threshold = Store.data.dayMonitor.threshold || 4;
     cells.forEach(function(cell) {
       var date = cell.dataset.date;
       if (!date) return;
-      var count = getDayEvents(fromKey(date)).length;
-      
+      var events = getDayEvents(fromKey(date));
+
       // Reset d'abord tous les styles
       cell.style.background = '';
       cell.style.color = '';
-      
-      if (count === 0) return; // Pas de coloration si pas d'événements
-      
-      var alpha = Math.min(1, count / maxJ);
+
+      if (!events.length) return; // Pas de coloration si pas d'événements
+
+      var maxJ = Math.max.apply(null, events.map(function(e){return e.j || 0;}));
+      var alpha = Math.min(1, maxJ / threshold);
       
       if (alpha <= 0.33) {
         // Vert pour charge faible
@@ -1183,7 +1191,7 @@
       };
       window.addEventListener('resize', function(){ var st=$('#panel-stats'); if(st && st.classList.contains('active')) renderStats()});
       // UI Sécurité: lier boutons et champs si présents
-      var secEvery=$('#secEvery'); var secToggle=$('#secToggle'); var secState=$('#secState'); var secLast=$('#secLast');
+      var secEvery=$('#secEvery'); var secToggle=$('#secToggle'); var secState=$('#secState'); var secLast=$('#secLast'); var secSave=$('#secSave');
       if(secEvery) secEvery.value=Store.data.backup? (Store.data.backup.everyMin||60):60;
       if(secToggle) secToggle.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Désactiver':'Activer';
       if(secState) secState.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Actif':'Inactif';
@@ -1199,7 +1207,7 @@
         Store.touch();
         Safety.start();
       });
-      on('#secEvery','change',function(){var v=parseInt(secEvery.value,10); if(!isNaN(v)&&v>=5){Store.data.backup.everyMin=v; Store.touch(); Safety.start()}});
+      on('#secSave','click',function(){var v=parseInt(secEvery.value,10); if(!isNaN(v)&&v>=5){Store.data.backup.everyMin=v; Store.touch(); Safety.start(); if(secSave){var t=secSave.textContent; secSave.textContent='Enregistré ✓'; secSave.style.background='linear-gradient(180deg,#163924,#0f2d1b)'; secSave.style.borderColor='#1e7c4a'; setTimeout(function(){secSave.textContent=t; secSave.style.background=''; secSave.style.borderColor='';},1500);}} else {alert('Intervalle invalide (min 5 min).'); if(secEvery) secEvery.value=Store.data.backup?(Store.data.backup.everyMin||60):60;}});
       Safety.start();
     }catch(e){showErr('Erreur au démarrage: '+(e&&e.message?e.message:String(e)))}
   });
