@@ -318,6 +318,10 @@
           </div>
         </div>
         <div class="row">
+          <label>Dernière vérif.</label>
+          <span class="hint" id="alertLast">Jamais</span>
+        </div>
+        <div class="row">
           <label>Seuil de J</label>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="number" id="alertThreshold" min="1" placeholder="Ex: 4" style="width:120px">
@@ -330,6 +334,14 @@
       <div class="card">
         <h3>Sauvegarde locale (automatique)</h3>
         <p class="hint">Choisissez un dossier local. Les données seront écrites dans <code>pass_j_data.json</code> à chaque modification.</p>
+        <div class="row">
+          <label>Dossier</label>
+          <span class="hint" id="dirName">Aucun</span>
+        </div>
+        <div class="row">
+          <label>Dernière sauvegarde</label>
+          <span class="hint" id="autoLast">Jamais</span>
+        </div>
         <div class="actions">
           <button class="btn primary" id="pickDir">Choisir le dossier…</button>
           <button class="btn" id="exportBtn">Exporter maintenant</button>
@@ -341,6 +353,7 @@
       <div class="card">
         <h3>Copies sécurité (immutables)</h3>
         <div class="row"><label>Intervalle (minutes)</label><input id="secEvery" type="number" min="5" step="5" placeholder="60"></div>
+        <div class="row"><label>Dernière copie</label><span class="hint" id="secLast">Jamais</span></div>
         <div class="actions">
           <button class="btn" id="secToggle">Activer</button>
           <span class="hint" id="secState">Inactif</span>
@@ -473,15 +486,17 @@
       var toggle = $('#alertToggle');
       var state = $('#alertState');
       var threshold = $('#alertThreshold');
-      
+      var last = $('#alertLast');
+
       if (toggle) toggle.textContent = Store.data.dayMonitor.enabled ? 'Désactiver' : 'Activer';
       if (state) state.textContent = Store.data.dayMonitor.enabled ? 'Actif' : 'Inactif';
       if (threshold) threshold.value = Store.data.dayMonitor.threshold || 4;
+      if (last) last.textContent = Store.data.dayMonitor.lastCheck ? new Date(Store.data.dayMonitor.lastCheck).toLocaleString('fr-FR') : 'Jamais';
     },
 
     startMonitoring: function() {
       clearInterval(this.interval);
-      this.interval = setInterval(this.check.bind(this), 2000);
+      this.interval = setInterval(this.check.bind(this), 60000);
       this.check();
     },
 
@@ -580,7 +595,7 @@
       if (!Store.data.dayMonitor.enabled || this.checking) return;
       
       this.checking = true;
-      
+
       var overloaded = this.findOverloadedDays();
       
       if (overloaded.length > 0) {
@@ -596,7 +611,10 @@
       }
       
       this.updateDayIndicators(overloaded);
-      
+
+      Store.data.dayMonitor.lastCheck = Date.now();
+      localStorage.setItem('pass_j_data',JSON.stringify(Store.data));
+      this.updateControls();
       this.checking = false;
     },
 
@@ -871,13 +889,13 @@
   function safeColor(c){c=String(c||'').trim();if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c))return c.toLowerCase();return '#394060'}
 
   var Store={
-    data:{subjects:[],presets:[],courses:[],events:[],sessions:[],timer:null,ui:{timerWin:null,pill:{side:'right',offset:22}},version:1,backup:{enabled:false,everyMin:60,nextIndex:1,lastAt:0},alert:{enabled:false,threshold:4,lastCheck:0,seenDates:{}}},lastGood:null,lastSize:0,dirHandle:null,allowEmpty:false,
-    init:async function(){try{var raw=localStorage.getItem('pass_j_data');if(raw)this.data=JSON.parse(raw)}catch(e){} if(!this.data.timer)this.data.timer={active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'}; if(!this.data.ui)this.data.ui={timerWin:null,pill:{side:'right',offset:22}}; if(!this.data.backup)this.data.backup={enabled:false,everyMin:60,nextIndex:1,lastAt:0}; if(!this.data.dayMonitor)this.data.dayMonitor={enabled:true,threshold:4,lastCheck:0,dismissed:{}}; var id=localStorage.getItem('pass_j_dir'); if(id&&window.showDirectoryPicker){try{this.dirHandle=await window.showDirectoryPicker({id:id,mode:'readwrite'})}catch(e){}} this.snapshot()},
+    data:{subjects:[],presets:[],courses:[],events:[],sessions:[],timer:null,ui:{timerWin:null,pill:{side:'right',offset:22}},version:1,backup:{enabled:false,everyMin:60,nextIndex:1,lastAt:0},dayMonitor:{enabled:true,threshold:4,lastCheck:0,dismissed:{}},lastSave:0},lastGood:null,lastSize:0,dirHandle:null,allowEmpty:false,
+    init:async function(){try{var raw=localStorage.getItem('pass_j_data');if(raw)this.data=JSON.parse(raw)}catch(e){} if(!this.data.timer)this.data.timer={active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'}; if(!this.data.ui)this.data.ui={timerWin:null,pill:{side:'right',offset:22}}; if(!this.data.backup)this.data.backup={enabled:false,everyMin:60,nextIndex:1,lastAt:0}; if(!this.data.dayMonitor)this.data.dayMonitor={enabled:true,threshold:4,lastCheck:0,dismissed:{}}; if(!this.data.lastSave)this.data.lastSave=0; var id=localStorage.getItem('pass_j_dir'); if(id&&window.showDirectoryPicker){try{this.dirHandle=await window.showDirectoryPicker({id:id,mode:'readwrite'})}catch(e){}} if(this.dirHandle){var dn=$('#dirName'); if(dn) dn.textContent=this.dirHandle.name||'(sans nom)';} this.snapshot()},
     snapshot:function(){this.lastGood=JSON.parse(JSON.stringify(this.data));try{this.lastSize=JSON.stringify(this.lastGood).length}catch(e){this.lastSize=0}},
     touch:function(){localStorage.setItem('pass_j_data',JSON.stringify(this.data));debounceSave()},
-    exportAuto:async function(){if(!this.dirHandle)return;try{var payload=JSON.stringify(this.data,null,2);var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();setStatus('Sauvegarde automatique effectuée.')});}await this._writeMain(payload);this.snapshot();setStatus('Sauvegarde automatique effectuée.')}catch(e){setStatus('Erreur écriture: '+e.message)}},
-    exportNow:async function(){var payload=JSON.stringify(this.data,null,2);if(this.dirHandle){try{var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();setStatus('Sauvegardé dans le dossier choisi.')});}await this._writeMain(payload);this.snapshot();setStatus('Sauvegardé dans le dossier choisi.');return}catch(e){setStatus('Erreur écriture: '+e.message)}} var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));a.download='pass_j_data.json';a.click();setStatus('Export téléchargé.')},
-    pickDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_dir',mode:'readwrite'});this.dirHandle=dir;localStorage.setItem('pass_j_dir','pass_j_dir');var s=$('#saveStatus'); if(s) s.textContent='Dossier sélectionné. Sauvegarde automatique activée.';await this.exportNow(); Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
+    exportAuto:async function(){if(!this.dirHandle)return;try{var payload=JSON.stringify(this.data,null,2);var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')}catch(e){setStatus('Erreur écriture: '+e.message)}},
+    exportNow:async function(){var payload=JSON.stringify(this.data,null,2);if(this.dirHandle){try{var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.');return}catch(e){setStatus('Erreur écriture: '+e.message)}} var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));a.download='pass_j_data.json';a.click();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Export téléchargé.')},
+    pickDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_dir',mode:'readwrite'});this.dirHandle=dir;localStorage.setItem('pass_j_dir','pass_j_dir');var dn=$('#dirName'); if(dn) dn.textContent=dir.name||'(sans nom)';var s=$('#saveStatus'); if(s) s.textContent='Dossier sélectionné. Sauvegarde automatique activée.';await this.exportNow(); Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
     antiWipe:function(){var d=this.data;if(this.allowEmpty){return}var nonEmpty=d.subjects.length||d.presets.length||d.courses.length||d.events.length||d.sessions.length;if(!nonEmpty&&this.lastGood){this.data=JSON.parse(JSON.stringify(this.lastGood))}}
   };
 
@@ -1081,6 +1099,7 @@
   ready(async function(){
     try{
       await Store.init();
+      updateAutoLast();
       if(!Store.data.subjects.length){Model.addSubject({name:'Maths',color:'#22d3ee'});Model.addSubject({name:'Physique',color:'#a78bfa'})}
       if(!Store.data.presets.length){Model.addPreset({name:'Classique 1-2-5-7-30-40',days:[1,2,5,7,30,40]});Model.addPreset({name:'Light 1-3-7-14',days:[1,3,7,14]})}
       var initColor=function(val){var btn=$('#subjColorBtn'); var inp=$('#subjColor'); var hex=$('#subjColorHex'); if(btn&&inp&&hex){ btn.style.background=val; btn.dataset.color=val; hex.textContent=val; btn.onclick=function(){inp.click()}; inp.addEventListener('input',function(){btn.style.background=inp.value; btn.dataset.color=inp.value; hex.textContent=String(inp.value).toLowerCase()}) }}; initColor('#4f46e5');
@@ -1136,7 +1155,7 @@
       on('#pickDir','click',function(){Store.pickDir()});
       on('#exportBtn','click',function(){Store.exportNow()});
       on('#importBtn','click',async function(){try{if(!window.showOpenFilePicker){alert('Non supporté');return}var arr=await window.showOpenFilePicker({types:[{description:'JSON',accept:{'application/json':['.json']}}]});var h=arr&&arr[0];if(!h)return;var f=await h.getFile();var txt=await f.text();var obj=JSON.parse(txt);if(obj&&obj.version!==undefined){Store.data=obj;Store.touch();refreshAll();setStatus('Import réussi.')}}catch(e){setStatus('Import annulé.')}});
-      on('#resetAll','click',function(){if(confirm('Tout effacer ?')){Store.data={subjects:[],presets:[],courses:[],events:[],sessions:[],timer:{active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'},ui:{timerWin:null,pill:{side:'right',offset:22}},version:1};Store.touch();Store.allowEmpty=true;Store.snapshot();setTimeout(function(){Store.allowEmpty=false;Store.snapshot()},3000);renderSubjects();renderPresets();refreshAll()}});
+      on('#resetAll','click',function(){if(confirm('Tout effacer ?')){Store.data={subjects:[],presets:[],courses:[],events:[],sessions:[],timer:{active:false,evId:null,courseId:null,subjectId:null,start:0,elapsed:0,running:false,minimized:false,title:'',color:'#22c55e'},ui:{timerWin:null,pill:{side:'right',offset:22}},version:1,backup:{enabled:false,everyMin:60,nextIndex:1,lastAt:0},dayMonitor:{enabled:true,threshold:4,lastCheck:0,dismissed:{}},lastSave:0};Store.touch();Store.allowEmpty=true;Store.snapshot();updateAutoLast();var dn=$('#dirName');if(dn)dn.textContent='Aucun';setTimeout(function(){Store.allowEmpty=false;Store.snapshot()},3000);renderSubjects();renderPresets();refreshAll()}});
 
       Timer.bind();
       // L'initialisation d'OverloadMonitor a été remplacée par DayMonitor
@@ -1185,10 +1204,11 @@
       };
       window.addEventListener('resize', function(){ var st=$('#panel-stats'); if(st && st.classList.contains('active')) renderStats()});
       // UI Sécurité: lier boutons et champs si présents
-      var secEvery=$('#secEvery'); var secToggle=$('#secToggle'); var secState=$('#secState');
+      var secEvery=$('#secEvery'); var secToggle=$('#secToggle'); var secState=$('#secState'); var secLast=$('#secLast');
       if(secEvery) secEvery.value=Store.data.backup? (Store.data.backup.everyMin||60):60;
       if(secToggle) secToggle.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Désactiver':'Activer';
       if(secState) secState.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Actif':'Inactif';
+      if(secLast) secLast.textContent=(Store.data.backup&&Store.data.backup.lastAt)?new Date(Store.data.backup.lastAt).toLocaleString('fr-FR'):'Jamais';
       on('#secToggle','click',function(){Store.data.backup.enabled=!Store.data.backup.enabled; if(secToggle) secToggle.textContent=Store.data.backup.enabled?'Désactiver':'Activer'; if(secState) secState.textContent=Store.data.backup.enabled?'Actif':'Inactif'; Store.touch(); Safety.start()});
       on('#secEvery','change',function(){var v=parseInt(secEvery.value,10); if(!isNaN(v)&&v>=5){Store.data.backup.everyMin=v; Store.touch(); Safety.start()}});
       Safety.start();
@@ -1207,12 +1227,13 @@
   }
 
   function setStatus(m){var el=$('#saveStatus');if(el)el.textContent=m}
+  function updateAutoLast(){var el=$('#autoLast');if(el)el.textContent=Store.data.lastSave?new Date(Store.data.lastSave).toLocaleString('fr-FR'):'Jamais'}
 
   var Danger={_payload:null,_proceed:null,ask:function(payload,proceed){this._payload=payload;this._proceed=proceed||null;var back=$('#dangerBack');if(back)back.style.display='flex'},abort:function(){this._payload=null;this._proceed=null;var back=$('#dangerBack');if(back)back.style.display='none';setStatus('Écriture annulée (réduction anormale)')},confirm:function(){var back=$('#dangerBack');if(back)back.style.display='none';if(this._proceed) this._proceed(this._payload); this._payload=null; this._proceed=null;}};
   on('#dangerAbort','click',function(){Danger.abort()});
   on('#dangerConfirm','click',function(){Danger.confirm()});
 
-  var Safety=(function(){var tid=null;async function writeCopy(){if(!Store.dirHandle||!Store.data.backup||!Store.data.backup.enabled)return;var payload=JSON.stringify(Store.data,null,2);var idx=(Store.data.backup.nextIndex|0)||1;var name='securite_'+idx+'.json';try{var fh=await Store.dirHandle.getFileHandle(name,{create:true});try{await fh.getFile();Store.data.backup.nextIndex=idx+1;return writeCopy()}catch(_){ }var w=await fh.createWritable();await w.write(payload);await w.close();Store.data.backup.nextIndex=idx+1;Store.data.backup.lastAt=Date.now();Store.touch();var s=$('#secState'); if(s) s.textContent='Dernière copie: '+new Date().toLocaleString('fr-FR')}catch(e){setStatus('Copie sécurité: '+e.message)}}function loop(){clearInterval(tid);if(!Store.data.backup||!Store.data.backup.enabled)return;var ms=Math.max(5,(Store.data.backup.everyMin|0)||60)*60*1000;tid=setInterval(writeCopy,ms)}return{start:loop,once:writeCopy};})();
+  var Safety=(function(){var tid=null;async function writeCopy(){if(!Store.dirHandle||!Store.data.backup||!Store.data.backup.enabled)return;var payload=JSON.stringify(Store.data,null,2);var idx=(Store.data.backup.nextIndex|0)||1;var name='securite_'+idx+'.json';try{var fh=await Store.dirHandle.getFileHandle(name,{create:true});try{await fh.getFile();Store.data.backup.nextIndex=idx+1;return writeCopy()}catch(_){ }var w=await fh.createWritable();await w.write(payload);await w.close();Store.data.backup.nextIndex=idx+1;Store.data.backup.lastAt=Date.now();Store.touch();var s=$('#secLast'); if(s) s.textContent=new Date(Store.data.backup.lastAt).toLocaleString('fr-FR')}catch(e){setStatus('Copie sécurité: '+e.message)}}function loop(){clearInterval(tid);if(!Store.data.backup||!Store.data.backup.enabled)return;var ms=Math.max(5,(Store.data.backup.everyMin|0)||60)*60*1000;writeCopy();tid=setInterval(writeCopy,ms)}return{start:loop,once:writeCopy};})();
 
 
 
