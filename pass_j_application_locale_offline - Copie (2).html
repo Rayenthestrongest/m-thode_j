@@ -496,7 +496,8 @@
 
     startMonitoring: function() {
       clearInterval(this.interval);
-      this.interval = setInterval(this.check.bind(this), 60000);
+      // Vérifie la charge plus fréquemment (toutes les 10 s)
+      this.interval = setInterval(this.check.bind(this), 10000);
       this.check();
     },
 
@@ -1106,29 +1107,7 @@
 
       renderSubjects();renderPresets();refreshFilters();renderAgenda();
 
-      // Initialise le système de surveillance des jours chargés
-      DayMonitor.init();
-
-      // Configure les contrôles de surveillance
-      on('#checkOverload', 'click', function() {
-        DayMonitor.goToOverloadedDay();
-      });
-      
-      on('#dismissOverload', 'click', function() {
-        DayMonitor.dismissAlert();
-      });
-      
-      on('#alertToggle', 'click', function() {
-        DayMonitor.toggle();
-        checkDailyLoad();
-      });
-      
-      on('#alertSave', 'click', function() {
-        var input = $('#alertThreshold');
-        if (input) {
-          DayMonitor.setThreshold(input.value);
-        }
-      });
+      // Configure le calendrier et les filtres initiaux
 
       $$('#nav .tab').forEach(function(t){t.onclick=function(){ $$('#nav .tab').forEach(function(x){x.classList.remove('active')}); t.classList.add('active'); var p=t.dataset.panel; $$('.panel').forEach(function(el){el.classList.toggle('active',el.id==='panel-'+p)}); if(p==='stats'){initStatsToolbar(); setTimeout(function(){renderStats()},0);}}});
       $$('#viewSeg button').forEach(function(b){b.onclick=function(){setView(b.dataset.view)}});
@@ -1209,7 +1188,17 @@
       if(secToggle) secToggle.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Désactiver':'Activer';
       if(secState) secState.textContent=(Store.data.backup&&Store.data.backup.enabled)?'Actif':'Inactif';
       if(secLast) secLast.textContent=(Store.data.backup&&Store.data.backup.lastAt)?new Date(Store.data.backup.lastAt).toLocaleString('fr-FR'):'Jamais';
-      on('#secToggle','click',function(){Store.data.backup.enabled=!Store.data.backup.enabled; if(secToggle) secToggle.textContent=Store.data.backup.enabled?'Désactiver':'Activer'; if(secState) secState.textContent=Store.data.backup.enabled?'Actif':'Inactif'; Store.touch(); Safety.start()});
+      on('#secToggle','click',function(){
+        if(!Store.dirHandle && !Store.data.backup.enabled){
+          setStatus('Choisissez un dossier pour activer les copies sécurité.');
+          return;
+        }
+        Store.data.backup.enabled=!Store.data.backup.enabled;
+        if(secToggle) secToggle.textContent=Store.data.backup.enabled?'Désactiver':'Activer';
+        if(secState) secState.textContent=Store.data.backup.enabled?'Actif':'Inactif';
+        Store.touch();
+        Safety.start();
+      });
       on('#secEvery','change',function(){var v=parseInt(secEvery.value,10); if(!isNaN(v)&&v>=5){Store.data.backup.everyMin=v; Store.touch(); Safety.start()}});
       Safety.start();
     }catch(e){showErr('Erreur au démarrage: '+(e&&e.message?e.message:String(e)))}
