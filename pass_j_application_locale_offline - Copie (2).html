@@ -103,6 +103,28 @@
     .chart-wrap{padding:10px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,#0e1424,#0a101a)}
     .chart-wrap canvas{display:block;width:100%}
     .err{position:fixed;left:12px;right:12px;top:12px;z-index:9999;background:#331a1a;border:1px solid #7f1d1d;color:#fca5a5;border-radius:10px;padding:10px 12px;white-space:pre-wrap}
+    .save-alert {
+      position: fixed;
+      left: 22px;
+      bottom: 22px;
+      background: linear-gradient(180deg,#331a1a,#1a0f0f);
+      border: 1px solid #7f1d1d;
+      border-radius: 12px;
+      padding: 16px;
+      width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      z-index: 10000;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity .3s ease, transform .3s ease;
+      pointer-events: none;
+    }
+
+    .save-alert.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
     .overload-alert {
       position: fixed;
       left: 22px;
@@ -432,16 +454,8 @@
 <div class="tooltip" id="tooltip"></div>
 <div id="err"></div>
 <div id="ctx" class="ctx"></div>
-<div class="modal-back" id="dangerBack" style="display:none">
-  <div class="modal" style="max-width:560px">
-    <h3 style="color:#fca5a5">Alerte : réduction anormale des données</h3>
-    <p class="hint">La taille des données à enregistrer a diminué de plus de 40%. Voulez-vous vraiment écraser le fichier ?</p>
-    <div class="modal-actions">
-      <button class="btn" id="dangerAbort">Abandonner</button>
-      <button class="btn warning" id="dangerConfirm">Enregistrer quand même</button>
-    </div>
-  </div>
-</div>
+
+<div id="saveError" class="save-alert"></div>
 
 <div id="overloadAlert" class="overload-alert">
   <div class="alert-header">
@@ -774,8 +788,8 @@
         updateDayColors();
       }
     },
-    exportAuto:async function(){if(!this.dirHandle)return;try{var payload=JSON.stringify(this.data,null,2);var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')}catch(e){setStatus('Erreur écriture: '+e.message)}},
-    exportNow:async function(){var payload=JSON.stringify(this.data,null,2);if(this.dirHandle){try{var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){return Danger.ask(payload, async (p)=>{await this._writeMain(p);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.')});}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.');return}catch(e){setStatus('Erreur écriture: '+e.message)}} var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));a.download='pass_j_data.json';a.click();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Export téléchargé.')},
+    exportAuto:async function(){if(!this.dirHandle)return;try{var payload=JSON.stringify(this.data,null,2);var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){showSaveError('Sauvegarde annulée : réduction des données supérieure à 40%');return;}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegarde automatique effectuée.')}catch(e){setStatus('Erreur écriture: '+e.message)}},
+    exportNow:async function(){var payload=JSON.stringify(this.data,null,2);if(this.dirHandle){try{var old=Math.max(1,this.lastSize||0);var neu=payload.length;if(old && neu<old*0.6 && !this.allowEmpty){showSaveError('Sauvegarde annulée : réduction des données supérieure à 40%');return;}await this._writeMain(payload);this.snapshot();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Sauvegardé dans le dossier choisi.');return}catch(e){setStatus('Erreur écriture: '+e.message)}} var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([payload],{type:'application/json'}));a.download='pass_j_data.json';a.click();this.data.lastSave=Date.now();localStorage.setItem('pass_j_data',JSON.stringify(this.data));updateAutoLast();setStatus('Export téléchargé.')},
     pickDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_dir',mode:'readwrite'});this.dirHandle=dir;localStorage.setItem('pass_j_dir','pass_j_dir');var dn=$('#dirName'); if(dn) dn.textContent=dir.name||'(sans nom)';var s=$('#saveStatus'); if(s) s.textContent='Dossier sélectionné. Sauvegarde automatique activée.';await this.exportNow(); Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
     pickSecDir:async function(){try{if(!window.showDirectoryPicker)throw new Error('Navigateur non supporté');var dir=await window.showDirectoryPicker({id:'pass_j_sec_dir',mode:'readwrite'});this.secDirHandle=dir;localStorage.setItem('pass_j_sec_dir','pass_j_sec_dir');var dn=$('#secDirName'); if(dn) dn.textContent=dir.name||'(sans nom)';setStatus('Dossier copies sécurité sélectionné.');Safety.start();}catch(e){setStatus('Dossier non sélectionné. '+(e.name||''))}},
     antiWipe:function(){var d=this.data;if(this.allowEmpty){return}var nonEmpty=d.subjects.length||d.presets.length||d.courses.length||d.events.length||d.sessions.length;if(!nonEmpty&&this.lastGood){this.data=JSON.parse(JSON.stringify(this.lastGood))}}
@@ -1110,11 +1124,17 @@
   function setStatus(m){var el=$('#saveStatus');if(el)el.textContent=m}
   function updateAutoLast(){var el=$('#autoLast');if(el)el.textContent=Store.data.lastSave?new Date(Store.data.lastSave).toLocaleString('fr-FR'):'Jamais'}
 
-  var Danger={_payload:null,_proceed:null,ask:function(payload,proceed){this._payload=payload;this._proceed=proceed||null;var back=$('#dangerBack');if(back)back.style.display='flex'},abort:function(){this._payload=null;this._proceed=null;var back=$('#dangerBack');if(back)back.style.display='none';setStatus('Écriture annulée (réduction anormale)')},confirm:function(){var back=$('#dangerBack');if(back)back.style.display='none';if(this._proceed) this._proceed(this._payload); this._payload=null; this._proceed=null;}};
-  on('#dangerAbort','click',function(){Danger.abort()});
-  on('#dangerConfirm','click',function(){Danger.confirm()});
+  function showSaveError(msg){
+    var el=$('#saveError');
+    if(el){
+      el.textContent=msg||'Sauvegarde annulée : réduction anormale des données';
+      el.classList.add('visible');
+      setTimeout(function(){el.classList.remove('visible')},8000);
+    }
+    setStatus('Écriture annulée (réduction anormale)');
+  }
 
-  var Safety=(function(){var tid=null;async function writeCopy(){if(!Store.secDirHandle||!Store.data.backup||!Store.data.backup.enabled)return;var payload=JSON.stringify(Store.data,null,2);var idx=(Store.data.backup.nextIndex|0)||1;var name='securite_'+idx+'.json';try{var fh=await Store.secDirHandle.getFileHandle(name,{create:true});try{await fh.getFile();Store.data.backup.nextIndex=idx+1;return writeCopy()}catch(_){ }var w=await fh.createWritable();await w.write(payload);await w.close();Store.data.backup.nextIndex=idx+1;Store.data.backup.lastAt=Date.now();Store.touch();var s=$('#secLast'); if(s) s.textContent=new Date(Store.data.backup.lastAt).toLocaleString('fr-FR'); var c=$('#secCount'); if(c) c.textContent=String(Store.data.backup.nextIndex-1);}catch(e){setStatus('Copie sécurité: '+e.message)}}function loop(){clearInterval(tid);if(!Store.data.backup||!Store.data.backup.enabled||!Store.secDirHandle)return;var ms=Math.max(5,(Store.data.backup.everyMin|0)||60)*60*1000;writeCopy();tid=setInterval(writeCopy,ms)}return{start:loop,once:writeCopy};})();
+  var Safety=(function(){var tid=null;async function writeCopy(){if(!Store.secDirHandle||!Store.data.backup||!Store.data.backup.enabled)return;var payload=JSON.stringify(Store.data,null,2);var idx=(Store.data.backup.nextIndex|0)||1;while(true){var name='securite_'+idx+'.json';try{await Store.secDirHandle.getFileHandle(name,{create:false});idx++;continue}catch(_){try{var fh=await Store.secDirHandle.getFileHandle(name,{create:true});var w=await fh.createWritable();await w.write(payload);await w.close();Store.data.backup.nextIndex=idx+1;Store.data.backup.lastAt=Date.now();Store.touch();var s=$('#secLast'); if(s) s.textContent=new Date(Store.data.backup.lastAt).toLocaleString('fr-FR'); var c=$('#secCount'); if(c) c.textContent=String(Store.data.backup.nextIndex-1);}catch(e){setStatus('Copie sécurité: '+e.message);}break;}}}function loop(){clearInterval(tid);if(!Store.data.backup||!Store.data.backup.enabled||!Store.secDirHandle)return;var ms=Math.max(5,(Store.data.backup.everyMin|0)||60)*60*1000;writeCopy();tid=setInterval(writeCopy,ms)}return{start:loop,once:writeCopy};})();
 
 
 
